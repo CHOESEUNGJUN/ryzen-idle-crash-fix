@@ -2,6 +2,8 @@
 
 # Ryzen 5000-series (5900X) random shutdown/reboot while idle — on a 24/7 system (home server, Proxmox, NAS)
 
+> **Disclaimer:** None of this has been confirmed with an oscilloscope or any real electrical measurement — everything below is inferred from BIOS settings, software sensor logging, and crash-free uptime. This exact fix may not solve it for you. It solved it for me.
+
 ## Symptom
 
 A Ryzen 5000-series CPU (this was reproduced on a 5900X + ASUS ROG Strix X570-E Gaming, but the mechanism appears to affect the wider Ryzen 2000–9000 / AM4–AM5 lineup based on community reports, across other vendors/boards too) randomly shuts down or reboots **only while idle or at low load** — never under sustained heavy load. No overheating, no obvious error in the OS logs beforehand. If you have a hardware watchdog enabled, you may just see a watchdog-triggered reset with no other explanation. If you catch a machine-check exception (MCE) in the logs, it typically decodes to a core-internal bank with no memory address captured (`ADDRV=0`), which rules out a RAM/DIMM fault even though it can superficially look memory-related.
