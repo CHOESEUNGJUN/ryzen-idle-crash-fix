@@ -33,6 +33,8 @@ Applied together, in the BIOS, all under the CPU/PBO section (menu names vary by
 4. **Platform/CPU thermal throttle limit: set manually**, comfortably below the CPU's real thermal limit.
 5. A small supplementary **VDDCR CPU Offset** (+0.1V in this case) — kept as a minor nudge on top of the above, not the primary fix.
 
+Cooling used here: a dual-tower air cooler (DeepCool AK-series, roughly). The exact PPT/thermal-limit numbers above are only sane with cooling in that class or better — treat the *existence* of these settings as the takeaway, not the specific values, if your cooler is smaller.
+
 Result so far: direct voltage sampling shows the idle voltage floor now settles in a stable, healthy range and does **not** dip toward the low value (~0.86V) that was directly observed right before an earlier crash. The system has now run well past its previous best-ever crash-free uptime with zero crashes, and is being watched for a much longer stretch (hundreds of hours) before calling it conclusively fixed.
 
 ## If you're debugging this yourself
