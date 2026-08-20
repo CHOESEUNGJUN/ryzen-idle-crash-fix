@@ -2,57 +2,64 @@
 
 # Ryzen 5000-series (5900X) random shutdown/reboot while idle — on a 24/7 system (home server, Proxmox, NAS)
 
-> **Disclaimer:** None of this has been confirmed with an oscilloscope or any real electrical measurement — everything below is inferred from BIOS settings, software sensor logging, and crash-free uptime. This exact fix may not solve it for you. It solved it for me.
+## 1. Overview
 
-## Symptom
+A record of a random shutdown/reboot occurring only in the idle state on a Ryzen 5000-series CPU in a 24/7 system (home server, Proxmox, NAS).[^1]
 
-A Ryzen 5000-series CPU (this was reproduced on a 5900X + ASUS ROG Strix X570-E Gaming, but the mechanism appears to affect the wider Ryzen 2000–9000 / AM4–AM5 lineup based on community reports, across other vendors/boards too) randomly shuts down or reboots **only while idle or at low load** — never under sustained heavy load. No overheating, no obvious error in the OS logs beforehand. If you have a hardware watchdog enabled, you may just see a watchdog-triggered reset with no other explanation. If you catch a machine-check exception (MCE) in the logs, it typically decodes to a core-internal bank with no memory address captured (`ADDRV=0`), which rules out a RAM/DIMM fault even though it can superficially look memory-related.
+## 2. Symptom
 
-This is easy to miss on a desktop that's rarely fully idle (gaming, browsing), but it shows up constantly on a system that's designed to sit idle for long stretches — a home server, hypervisor host, NAS, or anything meant to run unattended 24/7.
+- Occurs only **while idle or at low load**, never under sustained heavy load.
+- No overheating. No advance warning in the logs.
+- If a hardware watchdog is enabled, only a watchdog-triggered reset is logged, often with no further explanation.
+- When a machine-check exception (MCE) is captured, it typically decodes to a core-internal bank with no memory address recorded (`ADDRV=0`) — superficially memory-like, but not an actual RAM fault.
+- Easy to miss on a desktop that is rarely fully idle (gaming, browsing); shows up consistently on a system designed to sit idle for long, unattended stretches.
 
-## What it is NOT
+## 3. Ruled-out causes
 
-Ruled out through direct testing, in case you're chasing the same ghost:
-- **RAM** — multiple full passes of memtest came back clean.
-- **A single bad CPU core** — isolating/offlining one specific physical core (the one implicated in the one MCE event that did occur) did **not** stop the crashes; several more crashes happened afterward with zero repeat MCEs. If you're tempted to blame "one bad core," get more evidence first — it's very likely a red herring.
-- **The motherboard or PSU** — no direct evidence either way, but the fix below addresses this at the CPU/VRM firmware level, not a hardware fault.
+- **RAM** — multiple full memtest passes came back clean.
+- **A single bad CPU core** — isolating/offlining the physical core implicated in the one MCE event did not stop the crashes; several more crashes occurred afterward with zero repeat MCEs. A single MCE event is insufficient grounds to conclude a core fault.
+- **Motherboard or PSU** — no direct evidence either way. Not separately verified, since the fix below addresses this at the CPU/VRM firmware-configuration level rather than a hardware fault.
 
-## My working hypothesis
+## 4. Root-cause analysis
 
-This looks like a transient current/voltage handling issue during idle-state power transitions, not a static "voltage too low" problem you'd normally associate with manual undervolting. In other words: **it behaves exactly like a failed undervolt, even if you never touched voltage settings yourself** — because the stock/BIOS-default idle power management on some boards apparently doesn't give the VRM enough current headroom for the very brief transient spike that happens when the CPU snaps from a deep idle state back to an active one (or vice versa). My best read is that this is a BIOS/firmware-level current-limit configuration issue (the CPU's "digital fuse" being set too conservatively for this specific transient), not a hardware defect — but I want to be upfront that the actual microsecond-scale VRM transient can't be directly observed with any software sensor polling (even fast polling only samples ~once per second), so this is a strong correlation from a fix that worked, not a fully proven root cause.
+This is assessed as a transient current-handling issue during idle↔active power-state transitions, not a static "voltage too low" condition.[^2] It reproduces the same behavior as a failed undervolt even without ever touching voltage settings directly. The stock BIOS-default idle power management on some boards appears not to provide sufficient current headroom for the brief transient spike at this transition.
 
-## What did NOT fix it
+In short: the root cause is assessed as the **current-limit (EDC) configuration**, not the voltage curve. This has not been confirmed with direct electrical measurement (e.g. oscilloscope); it is inferred from the outcome of the applied fix.
 
-- Disabling Global C-states and setting "Power Supply Idle Control" to a less aggressive idle mode, alone, did not stop the crashes.
-- A positive **VDDCR CPU Offset** (a flat voltage curve shift) barely moved the actual idle voltage floor at all (in logged testing, less than 0.02V), while pushing the boost-clock voltage ceiling well past AMD's own documented ~1.55V hard cap for this generation — i.e. it added real risk without addressing the actual problem. If your board exposes a separate Offset vs Fixed/Manual voltage mode, be aware they behave very differently — the idle floor and the boost ceiling are not simply "the same curve shifted."
+## 5. Actions taken
 
-## What did fix it (so far)
+### 5.1 Ineffective
 
-Applied together, in the BIOS, all under the CPU/PBO section (menu names vary by vendor):
-1. **Precision Boost Overdrive (PBO): Manual** (not Auto)
-2. **EDC (Electrical Design Current) limit: raised** — this is the key one. The stock/default EDC limit appears too small for the actual transient current draw of this CPU generation during a power-state transition. Raise it meaningfully (double the default in this case).
-3. **PPT (total power) limit: raised** to a level your cooling can sustain.
-4. **Platform/CPU thermal throttle limit: set manually**, comfortably below the CPU's real thermal limit.
-5. A small supplementary **VDDCR CPU Offset** (+0.1V in this case) — kept as a minor nudge on top of the above, not the primary fix.
+- Disabling Global C-states + setting Power Supply Idle Control to Typical mode — did not stop the crashes on its own.
+- A positive VDDCR CPU Offset — measured idle voltage floor barely moved (<0.02V), while the boost-clock voltage ceiling exceeded AMD's documented ~1.55V hard cap for this generation. Added risk without resolving the issue.
 
-Cooling used here: a dual-tower air cooler (DeepCool AK-series, roughly). The exact PPT/thermal-limit numbers above are only sane with cooling in that class or better — treat the *existence* of these settings as the takeaway, not the specific values, if your cooler is smaller.
+### 5.2 Applied fix
 
-**Credit where due:** the EDC/PPT/PBO-manual direction itself isn't something I came up with from scratch — it's based on a community thread describing the same CPU + motherboard combination hitting the same idle-crash symptom, with that exact fix. What's my own work here is testing it on my own setup, tuning the actual numbers (EDC/PPT/thermal/offset values) for my cooling and use case, verifying with direct voltage/temperature sampling before and after, and writing this up.
+Applied together, in the BIOS, under the CPU/PBO section:
 
-Result so far: direct voltage sampling shows the idle voltage floor now settles in a stable, healthy range and does **not** dip toward the low value (~0.86V) that was directly observed right before an earlier crash. The system has now run well past its previous best-ever crash-free uptime with zero crashes.
+1. Precision Boost Overdrive (PBO): **Manual** (not Auto)
+2. EDC (Electrical Design Current) limit: **raised** — key change. The default limit is assessed as too low for this CPU generation's transient current demand during a power-state transition; raised to roughly double the default.
+3. PPT (total power) limit: raised to the level the cooling can sustain.
+4. Platform/CPU thermal throttle limit: set manually, with margin below the real thermal limit.
+5. VDDCR CPU Offset +0.1V — supplementary, not the primary fix.
 
-**Update — confirmed:** the system has now been up 200+ hours (8+ days) straight, crash-free, comfortably past the "hundreds of hours" watch period mentioned above. Calling this fixed.
+Cooling used: a dual-tower air cooler (DeepCool AK-series). The PPT/thermal-limit values above assume cooling of that class or better; with a smaller cooler, treat the existence of these settings as the takeaway rather than the specific numbers.
 
-## Want to share your own results?
+The EDC/PPT/PBO-Manual direction itself is based on a community report of the same CPU/motherboard combination hitting the same symptom. The contribution of this document is applying and tuning those values for this specific setup, with before/after voltage and temperature measurement.
 
-If you try this and it works (or doesn't) on your setup, please open an issue or discussion on this repo — different CPU/board/cooling combos, different EDC/PPT numbers that worked for you, anything. This is exactly the kind of problem where more data points from more setups helps everyone.
+## 6. Result
 
-## If you're debugging this yourself
+200+ hours (8+ days) of continuous, crash-free uptime confirmed after the fix. Direct voltage sampling shows the idle voltage floor holding in a stable range, with no recurrence of the low value (~0.86V) observed immediately before an earlier crash. Assessed as resolved.
 
-- Log CPU core voltage, temperature, and load continuously (even a simple 1-minute-interval script logging your platform's sensor output is enough) so you have data from right before the next crash, not just after.
-- Check machine-check-exception decode (if any) for the bank number and whether an address was captured — no address strongly suggests not a memory fault.
-- Don't jump to "bad core" from one MCE event — test it, don't assume it.
-- If you try a voltage offset first, measure the actual idle floor and boost ceiling before/after — don't assume it did what you wanted.
-- Look specifically at your BIOS's PBO/current-limit (EDC/TDC/PPT) settings before spending more time on voltage-curve settings — for this specific CPU/idle-crash signature, the current limit was the missing piece, not the voltage curve.
+## 7. Notes for debugging the same issue
 
-*Written up in the hope it saves someone else the multi-week debugging loop this took.*
+- Log voltage, temperature, and load continuously — data from immediately before a crash is required, not just after.
+- On an MCE, check whether the bank number and address were captured. No address captured suggests a memory fault is unlikely.
+- Do not conclude a specific core is at fault from a single MCE event without further testing.
+- If trying a voltage offset first, measure the actual idle floor and boost ceiling before and after — do not assume it did what was intended.
+- Check the BIOS's PBO/current-limit settings (EDC/TDC/PPT) before spending more time on the voltage curve.
+
+If you're seeing the same symptom, or have results from a different CPU/board/cooling combination, please open an issue.
+
+[^1]: Reproduced on a 5900X + ASUS ROG Strix X570-E Gaming combination. Community reports suggest the mechanism affects the wider Ryzen 2000–9000 / AM4–AM5 lineup, across vendors and boards.
+[^2]: The microsecond-scale VRM transient cannot be directly observed via software sensor polling (roughly once per second at best). This root-cause analysis is therefore a strong correlation from a fix that worked, not a root cause confirmed by direct electrical measurement.
