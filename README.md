@@ -39,7 +39,9 @@ Cooling used here: a dual-tower air cooler (DeepCool AK-series, roughly). The ex
 
 **Credit where due:** the EDC/PPT/PBO-manual direction itself isn't something I came up with from scratch — it's based on a community thread describing the same CPU + motherboard combination hitting the same idle-crash symptom, with that exact fix. What's my own work here is testing it on my own setup, tuning the actual numbers (EDC/PPT/thermal/offset values) for my cooling and use case, verifying with direct voltage/temperature sampling before and after, and writing this up.
 
-Result so far: direct voltage sampling shows the idle voltage floor now settles in a stable, healthy range and does **not** dip toward the low value (~0.86V) that was directly observed right before an earlier crash. The system has now run well past its previous best-ever crash-free uptime with zero crashes, and is being watched for a much longer stretch (hundreds of hours) before calling it conclusively fixed.
+Result so far: direct voltage sampling shows the idle voltage floor now settles in a stable, healthy range and does **not** dip toward the low value (~0.86V) that was directly observed right before an earlier crash. The system has now run well past its previous best-ever crash-free uptime with zero crashes.
+
+**Update — confirmed:** the system has now been up 200+ hours (8+ days) straight, crash-free, comfortably past the "hundreds of hours" watch period mentioned above. Calling this fixed.
 
 ## Want to share your own results?
 
